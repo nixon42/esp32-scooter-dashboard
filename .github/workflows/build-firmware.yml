@@ -1,0 +1,114 @@
+name: Build & Release Firmware
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish as GitHub Release'
+        required: true
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Custom Tag (e.g. v1.0.1, leave blank for auto)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ESP-IDF & Test
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git Safe Directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Set Target to ESP32-C3
+        run: idf.py set-target esp32c3
+
+      - name: Build Firmware with ESP-IDF
+        run: idf.py build
+
+      - name: Generate Merged Flashable Binary
+        run: |
+          cd build
+          esptool.py --chip esp32c3 merge_bin -o esp32-scooter-dashboard-merged.bin @flash_args
+
+      - name: Compute Checksums
+        run: |
+          cd build
+          sha256sum esp32-scooter-dashboard.bin \
+                    esp32-scooter-dashboard-merged.bin \
+                    bootloader/bootloader.bin \
+                    partition_table/partition-table.bin \
+                    ota_data_initial.bin > SHA256SUMS.txt
+          echo "=== SHA-256 CHECKSUMS ==="
+          cat SHA256SUMS.txt
+
+      - name: Run E2E Test Suite
+        run: ./tests/e2e/run_e2e_tests.sh --all
+
+      - name: Upload Build Artifacts to Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-scooter-dashboard-${{ github.sha }}
+          path: |
+            build/esp32-scooter-dashboard.bin
+            build/esp32-scooter-dashboard-merged.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/ota_data_initial.bin
+            build/SHA256SUMS.txt
+
+      - name: Determine Release Tag
+        id: release_info
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v1.0.0-build.$(date +'%Y%m%d%H%M')"
+          fi
+          echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_title=ESP32 Scooter Dashboard ${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: ${{ steps.release_info.outputs.release_title }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            build/esp32-scooter-dashboard.bin
+            build/esp32-scooter-dashboard-merged.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/ota_data_initial.bin
+            build/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,36 @@
+# ==============================================================================
+# ESP32 Scooter Dashboard - .gitignore
+# ==============================================================================
+
+# ESP-IDF Build artifacts
+build/
+sdkconfig.old
+
+# Python Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+ENV/
+
+# Hardware & Flash dumps
+nvs_dump.bin
+
+# Editor & IDE configs
+.vscode/
+.idea/
+.clangd/
+compile_commands.json
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Assistant & Agent scratch artifacts
+.agents/
