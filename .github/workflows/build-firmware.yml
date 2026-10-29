@@ -31,8 +31,6 @@ jobs:
   build:
     name: Build ESP-IDF & Test
     runs-on: ubuntu-latest
-    container:
-      image: espressif/idf:v5.3
 
     steps:
       - name: Checkout Repository
@@ -40,33 +38,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure Git Safe Directory
-        run: git config --global --add safe.directory '*'
-
-      - name: Set Target to ESP32-C3
-        run: idf.py set-target esp32c3
-
-      - name: Build Firmware with ESP-IDF
-        run: idf.py build
-
-      - name: Generate Merged Flashable Binary
+      - name: Build Firmware & Run Tests in ESP-IDF Docker
         run: |
-          cd build
-          esptool.py --chip esp32c3 merge_bin -o esp32-scooter-dashboard-merged.bin @flash_args
-
-      - name: Compute Checksums
-        run: |
-          cd build
-          sha256sum esp32-scooter-dashboard.bin \
-                    esp32-scooter-dashboard-merged.bin \
-                    bootloader/bootloader.bin \
-                    partition_table/partition-table.bin \
-                    ota_data_initial.bin > SHA256SUMS.txt
-          echo "=== SHA-256 CHECKSUMS ==="
-          cat SHA256SUMS.txt
-
-      - name: Run E2E Test Suite
-        run: ./tests/e2e/run_e2e_tests.sh --all
+          docker run --rm \
+            -v "${{ github.workspace }}:/project" \
+            -w /project \
+            espressif/idf:v5.3 \
+            bash -c "
+              set -e
+              git config --global --add safe.directory '*'
+              . /opt/esp/idf/export.sh || true
+              idf.py set-target esp32c3
+              idf.py build
+              cd build
+              esptool.py --chip esp32c3 merge_bin -o esp32-scooter-dashboard-merged.bin @flash_args
+              sha256sum esp32-scooter-dashboard.bin \
+                        esp32-scooter-dashboard-merged.bin \
+                        bootloader/bootloader.bin \
+                        partition_table/partition-table.bin \
+                        ota_data_initial.bin > SHA256SUMS.txt
+              cat SHA256SUMS.txt
+              cd ..
+              ./tests/e2e/run_e2e_tests.sh --all
+            "
+          # Ensure runner user has write/read permissions on generated build directory
+          sudo chmod -R a+rw build/
 
       - name: Upload Build Artifacts to Actions
         uses: actions/upload-artifact@v4
