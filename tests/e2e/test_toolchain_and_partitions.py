@@ -24,6 +24,7 @@ NVME_MOUNT = "/run/media/nixon/6fde869e-c24a-48e3-80a4-6e3a943a14db"
 PYENV_PYTHON = "/home/nixon/.pyenv/versions/3.11.14/bin/python3"
 UV_BIN = "/usr/bin/uv"
 
+@unittest.skipUnless(os.path.exists(NVME_MOUNT), "Local host workstation environment test (skipped in CI)")
 class TestF01ToolchainAndIsolation(unittest.TestCase):
     """F01: Toolchain & Environment Isolation tests."""
 
